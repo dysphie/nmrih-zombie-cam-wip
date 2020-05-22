@@ -61,8 +61,7 @@ enum struct ZombieCamera
 
 	bool Create()
 	{
-		int camera = this.GetCamera();
-		if(camera != -1)
+		if(this.GetCamera() != -1)
 		{
 			PrintToServer("WARNING: ZombieCamera.Create() called but camera already present. Ignoring");
 			return true;
@@ -97,7 +96,7 @@ enum struct ZombieCamera
 		if(camera != -1)
 			RemoveEntity(camera);
 
-		int cursor = 0;
+		this.cursor = 0;
 	}
 
 	bool Next()
