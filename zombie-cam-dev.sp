@@ -10,60 +10,66 @@
 
 #define MAXPLAYERS_NMRIH 9
 
-ArrayList g_Zombies;
+ArrayList g_hZombies;
 
 enum struct ZombieCamera
 {
 	// Ent ref to our camera prop
 	int camera;
 
-	// Current position in g_Zombies
+	// Current position in g_hZombies
 	int cursor;
 
-	// TODO: Replace this function for GetCamera
-	bool IsValid()
+	// Return the entity index of the dummy prop we use as our cam
+	int GetCamera()
 	{
-		return this.camera && EntRefToEntIndex(this.camera) != -1;
+		if(!this.camera)
+			return -1;
+
+		return EntRefToEntIndex(this.camera);
 	}
 
 	// Attach our camera to a zombie's eyes
 	void Attach(int zombie)
 	{
-		if(!this.IsValid())
+		int camera = this.GetCamera();
+
+		if(camera == -1)
 		{
 			PrintToServer("ERROR: ZombieCamera.Attach() called with no camera");
 			return;
 		}
 
-		AcceptEntityInput(this.camera, "ClearParent");
+		AcceptEntityInput(camera, "ClearParent");
 
 		SetVariantString("!activator");
-		AcceptEntityInput(this.camera, "SetParent", zombie);
+		AcceptEntityInput(camera, "SetParent", zombie);
 
 		SetVariantString("headshot_squirt");
-		AcceptEntityInput(this.camera, "SetParentAttachment");
+		AcceptEntityInput(camera, "SetParentAttachment");
 
 		float vecAngles[3];
-		GetEntPropVector(this.camera, Prop_Send, "m_angRotation", vecAngles);
+		GetEntPropVector(camera, Prop_Send, "m_angRotation", vecAngles);
 
 		// FIXME: Wrong orientation for zombie children
 		// TODO: Proper correction based on model names
 		vecAngles[1] += 270.0;
 		vecAngles[2] = 0.0;
 
-		SetEntPropVector(this.camera, Prop_Send, "m_angRotation", vecAngles);
+		SetEntPropVector(camera, Prop_Send, "m_angRotation", vecAngles);
 	}
 
 	bool Create()
 	{
-		if(this.IsValid())
+		int camera = this.GetCamera();
+		if(camera != -1)
 		{
 			PrintToServer("WARNING: ZombieCamera.Create() called but camera already present. Ignoring");
 			return true;
 		}
 
 		// Don't create the camera if we have nothing to attach it to
-		if(!g_Zombies.Length)
+		if(!g_hZombies.Length)
 		{
 			PrintToServer("WARNING: ZombieCamera.Create() called but no zombies present");
 			return false;
@@ -79,28 +85,30 @@ enum struct ZombieCamera
 
 		this.camera = EntIndexToEntRef(camera);
 
-		int zombie = g_Zombies.Get(0);
+		int zombie = g_hZombies.Get(0);
 		this.Attach(zombie);
 		return true;
 	}
 
 	void Delete()
 	{
-		if(!this.IsValid())
-			return;
+		int camera = this.GetCamera();
 
-		RemoveEntity(this.camera);
+		if(camera != -1)
+			RemoveEntity(camera);
+
+		int cursor = 0;
 	}
 
 	bool Next()
 	{
-		if(!this.IsValid())
+		if(this.GetCamera() == -1)
 		{
 			PrintToServer("ERROR: ZombieCamera.Next() called with no camera");
 			return false;
 		}
 
-		int len = g_Zombies.Length;
+		int len = g_hZombies.Length;
 		if(!len)
 		{
 			PrintToServer("ERROR: ZombieCamera.Next() called but no zombies present");
@@ -108,7 +116,7 @@ enum struct ZombieCamera
 		}
 
 		this.cursor = (this.cursor + 1) % len;
-		int zombie = g_Zombies.Get(this.cursor);
+		int zombie = g_hZombies.Get(this.cursor);
 		this.Attach(zombie);
 		PrintToServer("Cursor at %d", this.cursor);
 
@@ -117,13 +125,13 @@ enum struct ZombieCamera
 
 	bool Prev()
 	{
-		if(!this.IsValid())
+		if(this.GetCamera() == -1)
 		{
 			PrintToServer("ERROR: ZombieCamera.Prev() called with no camera");
 			return false;
 		}
 
-		int len = g_Zombies.Length;
+		int len = g_hZombies.Length;
 		if(!len)
 		{
 			PrintToServer("ERROR: ZombieCamera.Prev() called but no zombies present");
@@ -131,7 +139,7 @@ enum struct ZombieCamera
 		}
 
 		this.cursor = (this.cursor + (len - 1)) % len;
-		int zombie = g_Zombies.Get(this.cursor);
+		int zombie = g_hZombies.Get(this.cursor);
 		this.Attach(zombie);
 		PrintToServer("Cursor at %d", this.cursor);
 
@@ -141,7 +149,7 @@ enum struct ZombieCamera
 	// Get the zombie we are currently spectating
 	int GetTargetZombie()
 	{
-		if(!this.IsValid())
+		if(this.GetCamera() == -1)
 			return -1;
 
 		return GetEntPropEnt(this.camera, Prop_Data, "m_hMoveParent");
@@ -152,7 +160,7 @@ ZombieCamera g_ZombieCameras[MAXPLAYERS_NMRIH+1];
 
 public void OnPluginStart()
 {
-	g_Zombies = new ArrayList();
+	g_hZombies = new ArrayList();
 
 	RegConsoleCmd("sm_spec", OnCmdSpec);
 	RegConsoleCmd("sm_exit", OnCmdExit);
@@ -162,13 +170,13 @@ public void OnPluginStart()
 	// Late load handling
 	int i = -1; 
 	while((i = FindEntityByClassname(i, "npc_nmrih*")) != -1)
-		g_Zombies.Push(i);
+		g_hZombies.Push(i);
 }
 
 public void OnEntityCreated(int entity, const char[] classname)
 {
 	if(IsEntityZombie(entity))
-		g_Zombies.Push(entity);
+		g_hZombies.Push(entity);
 }
 
 public void OnEntityDestroyed(int entity)
@@ -176,8 +184,8 @@ public void OnEntityDestroyed(int entity)
 	if(!IsEntityZombie(entity))
 		return;
 
-	int idx = g_Zombies.FindValue(entity);
-	g_Zombies.Erase(idx);
+	int idx = g_hZombies.FindValue(entity);
+	g_hZombies.Erase(idx);
 
 	for(int i = 1; i <= MaxClients; i++)
 	{
@@ -232,13 +240,18 @@ public Action OnCmdExit(int client, int args)
 
 public void OnPluginEnd()
 {
+	int camera;
 	for(int i = 1; i <= MaxClients; i++)
 	{
-		if(g_ZombieCameras[i].IsValid())
-		{
-			RemoveEntity(g_ZombieCameras[i].camera);
-			SetClientViewEntity(i, i);
-		}
+		if(!IsClientInGame(i))
+			continue;
+
+		camera = g_ZombieCameras[i].GetCamera();
+		if(camera == -1)
+			continue;
+
+		RemoveEntity(g_ZombieCameras[i].camera);
+		SetClientViewEntity(i, i);
 	}
 }
 
